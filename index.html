@@ -5324,5 +5324,291 @@
     -- Índice para mejorar rendimiento
     CREATE INDEX idx_emprende_fecha ON EMPRENDE (fecha_actualizacion);
     -->
+    <!-- ===== PARCHE DE ACTUALIZACIÓN - VERSIÓN 3.1.0 ===== -->
+<!-- ===== INSERTAR DESPUÉS DEL SCRIPT PRINCIPAL Y ANTES DE </body> ===== -->
+<script>
+    // ============================================================
+    //  PARCHES DE ACTUALIZACIÓN - VERSIÓN 3.1.0
+    //  Fecha: 2026-06-17
+    //  Características:
+    //  1. Administrador accede sin seleccionar rol en el login
+    //  2. Configuración visible solo para Administrador
+    //  3. Supabase desvinculado (modo offline)
+    // ============================================================
+
+    (function() {
+        console.log('🔄 Aplicando parches de actualización v3.1.0...');
+
+        // ============================================================
+        //  PATCH 1: ADMINISTRADOR ACCEDE SIN SELECCIONAR ROL
+        //  El administrador usa sus credenciales y el sistema detecta
+        //  automáticamente que es administrador sin necesidad de rol
+        // ============================================================
+        
+        // 1.1 Modificar el evento de login para detectar administrador automáticamente
+        const loginForm = document.getElementById('welcome-login-form');
+        if (loginForm) {
+            // Guardar el evento original
+            const originalSubmit = loginForm._listeners?.submit?.[0];
+            
+            // Reemplazar el comportamiento de login
+            loginForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const username = document.getElementById('welcome-username').value;
+                const password = document.getElementById('welcome-password').value;
+                const roleSelect = document.getElementById('welcome-role');
+                const selectedRole = roleSelect.value;
+
+                // Verificar si es el administrador principal
+                const isAdmin = username === 'pabloemiliorico24@gmail.com' && password === 'Perp.241';
+                
+                // Si es administrador, ignorar el rol seleccionado
+                if (isAdmin) {
+                    // Ocultar el mensaje de error de rol si existe
+                    const roleError = document.querySelector('.alert-role-error');
+                    if (roleError) roleError.remove();
+                    
+                    // Usar el método handleWelcomeLogin del sistema
+                    if (window.crmSystem && window.crmSystem.handleWelcomeLogin) {
+                        // Forzar el rol a 'administrador'
+                        roleSelect.value = 'administrador';
+                        window.crmSystem.handleWelcomeLogin();
+                    }
+                    return;
+                }
+
+                // Para usuarios normales, validar que hayan seleccionado un rol
+                if (!selectedRole) {
+                    // Mostrar mensaje de error
+                    const existingError = document.querySelector('.alert-role-error');
+                    if (existingError) existingError.remove();
+                    
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'alert alert-danger alert-role-error';
+                    errorDiv.innerHTML = `
+                        <i class="fas fa-exclamation-circle"></i>
+                        Por favor, seleccione un rol para continuar.
+                        <br><small>El Administrador inicia sesión automáticamente.</small>
+                    `;
+                    loginForm.insertBefore(errorDiv, loginForm.firstChild);
+                    
+                    setTimeout(() => {
+                        if (errorDiv.parentNode) errorDiv.remove();
+                    }, 5000);
+                    return;
+                }
+
+                // Para usuarios normales con rol seleccionado, proceder normalmente
+                if (window.crmSystem && window.crmSystem.handleWelcomeLogin) {
+                    window.crmSystem.handleWelcomeLogin();
+                }
+            }, true); // true para ejecutarse antes que otros eventos
+        }
+
+        // 1.2 Ocultar la opción "Administrador" del selector de roles
+        const roleSelect = document.getElementById('welcome-role');
+        if (roleSelect) {
+            // Ocultar la opción de administrador
+            const adminOption = roleSelect.querySelector('option[value="administrador"]');
+            if (adminOption) {
+                adminOption.style.display = 'none';
+                adminOption.disabled = true;
+            }
+            
+            // Agregar un mensaje indicativo
+            const infoMsg = document.createElement('small');
+            infoMsg.style.cssText = 'display: block; margin-top: 5px; color: #7f8c8d; font-style: italic;';
+            infoMsg.innerHTML = '👤 El Administrador accede automáticamente con sus credenciales.';
+            roleSelect.parentNode.appendChild(infoMsg);
+        }
+
+        console.log('✅ Patch 1: Administrador accede sin seleccionar rol');
+
+        // ============================================================
+        //  PATCH 2: CONFIGURACIÓN VISIBLE SOLO PARA ADMINISTRADOR
+        //  El menú de configuración solo aparece si el usuario es admin
+        // ============================================================
+        
+        // 2.1 Modificar la función getNavigationForRole para que solo admin vea configuración
+        const originalGetNav = CRMSystem.prototype.getNavigationForRole;
+        if (originalGetNav) {
+            CRMSystem.prototype.getNavigationForRole = function(role) {
+                const nav = originalGetNav.call(this, role);
+                
+                // Si no es administrador, quitar la opción de configuración
+                if (role !== 'administrador') {
+                    return nav.filter(item => item.section !== 'config');
+                }
+                
+                return nav;
+            };
+            console.log('✅ Patch 2: Configuración visible solo para Administrador');
+        }
+
+        // 2.2 Modificar la función updateNavigation para filtrar en tiempo real
+        const originalUpdateNav = CRMSystem.prototype.updateNavigation;
+        if (originalUpdateNav) {
+            CRMSystem.prototype.updateNavigation = function() {
+                const menu = document.getElementById('sidebar-menu');
+                let navItems = this.getNavigationForRole(this.currentRole);
+                
+                // Filtrar configuración si no es admin
+                if (this.currentRole !== 'administrador') {
+                    navItems = navItems.filter(item => item.section !== 'config');
+                }
+                
+                menu.innerHTML = navItems.map(item => `
+                    <a href="#" class="menu-item ${this.currentSection === item.section ? 'active' : ''}" data-section="${item.section}">
+                        <i class="fas fa-${item.icon}"></i>
+                        <span>${item.label}</span>
+                    </a>
+                `).join('');
+
+                menu.querySelectorAll('.menu-item').forEach(item => {
+                    item.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        const section = e.currentTarget.dataset.section;
+                        this.loadSection(section);
+                        document.getElementById('sidebar').classList.remove('active');
+                    });
+                });
+            };
+            console.log('✅ Patch 2a: Filtro de configuración en navegación');
+        }
+
+        // 2.3 Redirigir si alguien intenta acceder a configuración sin ser admin
+        const originalLoadSection = CRMSystem.prototype.loadSection;
+        if (originalLoadSection) {
+            CRMSystem.prototype.loadSection = function(section) {
+                if (section === 'config' && this.currentRole !== 'administrador') {
+                    this.showAlert('⚠️ Acceso denegado. Solo el Administrador puede acceder a la configuración.', 'danger');
+                    section = 'dashboard';
+                }
+                originalLoadSection.call(this, section);
+            };
+            console.log('✅ Patch 2b: Protección de acceso a Configuración');
+        }
+
+        // ============================================================
+        //  PATCH 3: SUPABASE DESVINCULADO (MODO OFFLINE)
+        //  Se desactiva toda la funcionalidad de Supabase
+        // ============================================================
+        
+        // 3.1 Desactivar sincronización automática
+        if (window.configurarSincronizacionAutomatica) {
+            const originalConfig = window.configurarSincronizacionAutomatica;
+            window.configurarSincronizacionAutomatica = function() {
+                console.log('⚠️ Supabase desactivado - Sincronización automática no disponible');
+                // No hacer nada
+            };
+        }
+
+        // 3.2 Desactivar funciones de Supabase
+        window.sincronizarConSupabase = async function() {
+            console.log('⚠️ Supabase desactivado - Sincronización no disponible');
+            return false;
+        };
+
+        window.cargarDesdeSupabase = async function() {
+            console.log('⚠️ Supabase desactivado - Carga desde Supabase no disponible');
+            return false;
+        };
+
+        // 3.3 Remover indicador de Supabase
+        const supabaseIndicator = document.getElementById('supabase-indicator');
+        if (supabaseIndicator) {
+            supabaseIndicator.style.display = 'none';
+            supabaseIndicator.innerHTML = '';
+            console.log('✅ Patch 3: Indicador de Supabase oculto');
+        }
+
+        // 3.4 Remover botones de Supabase de Configuración
+        const supabaseSection = document.getElementById('supabase-config-section');
+        if (supabaseSection) {
+            supabaseSection.style.display = 'none';
+            console.log('✅ Patch 3: Sección de Supabase oculta');
+        }
+
+        // 3.5 Desactivar cualquier intento de sincronización en saveData
+        const originalSaveData = CRMSystem.prototype.saveData;
+        if (originalSaveData) {
+            CRMSystem.prototype.saveData = function() {
+                this.data.config.lastSync = new Date().toISOString();
+                localStorage.setItem('emprende_data_v3', JSON.stringify(this.data));
+                console.log('✅ Datos guardados localmente (Modo offline)');
+                // No llamar a sincronizarConSupabase
+            };
+            console.log('✅ Patch 3: saveData en modo offline');
+        }
+
+        // 3.6 Desactivar la verificación de estado de Supabase
+        const supabaseStatusCheck = setInterval(() => {
+            // Limpiar el intervalo que verifica el estado de Supabase
+            const statusDot = document.getElementById('supabase-status');
+            if (statusDot) {
+                statusDot.style.color = '#95a5a6';
+                statusDot.title = 'Supabase desactivado';
+            }
+        }, 30000);
+
+        // 3.7 Limpiar el intervalo al cargar
+        setTimeout(() => {
+            clearInterval(supabaseStatusCheck);
+            const statusDot = document.getElementById('supabase-status');
+            if (statusDot) {
+                statusDot.style.color = '#95a5a6';
+                statusDot.textContent = '○';
+                statusDot.title = 'Supabase desactivado';
+            }
+        }, 1000);
+
+        console.log('✅ Patch 3: Supabase desvinculado completamente');
+
+        // ============================================================
+        //  PATCH 4: MEJORAS ADICIONALES
+        //  - Mensaje de bienvenida personalizado para admin
+        //  - Ocultar selector de rol para admin en login
+        // ============================================================
+        
+        // 4.1 Mostrar mensaje al cargar el login sobre el acceso de administrador
+        const loginContainer = document.getElementById('login-form-container');
+        if (loginContainer) {
+            const adminMsg = document.createElement('div');
+            adminMsg.className = 'alert alert-info';
+            adminMsg.style.cssText = 'margin-bottom: 15px; font-size: 0.9rem;';
+            adminMsg.innerHTML = `
+                <i class="fas fa-shield-alt"></i>
+                <strong>Acceso Administrador:</strong> Use sus credenciales para iniciar sesión automáticamente.
+                <br><small>No necesita seleccionar un rol.</small>
+            `;
+            loginContainer.insertBefore(adminMsg, loginContainer.firstChild);
+        }
+
+        // 4.2 Modificar el mensaje de bienvenida para mostrar el rol correcto
+        const originalUpdateUserInfo = CRMSystem.prototype.updateUserInfo;
+        if (originalUpdateUserInfo) {
+            CRMSystem.prototype.updateUserInfo = function() {
+                const roleDisplay = document.getElementById('user-role');
+                if (roleDisplay) {
+                    if (this.currentRole === 'administrador') {
+                        roleDisplay.textContent = '👑 Administrador';
+                    } else {
+                        roleDisplay.textContent = this.currentRole.charAt(0).toUpperCase() + this.currentRole.slice(1);
+                    }
+                }
+            };
+            console.log('✅ Patch 4: Mejoras visuales aplicadas');
+        }
+
+        console.log('✅ Todos los parches aplicados correctamente');
+        console.log('📌 Versión 3.1.0 - Modo offline activo');
+        console.log('📌 Administrador: accede sin seleccionar rol');
+        console.log('📌 Configuración: solo visible para Administrador');
+        console.log('📌 Supabase: desvinculado');
+
+    })();
+</script>
+</body>
+</html>
 </body>
 </html>
