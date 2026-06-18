@@ -5608,6 +5608,647 @@
 
     })();
 </script>
+    <!-- ===== PARCHE DE ACTUALIZACIÓN - VERSIÓN 3.2.0 ===== -->
+<!-- ===== INSERTAR DESPUÉS DEL SCRIPT PRINCIPAL Y ANTES DE </body> ===== -->
+<script>
+    // ============================================================
+    //  PARCHES DE ACTUALIZACIÓN - VERSIÓN 3.2.0
+    //  Fecha: 2026-06-17
+    //  Características:
+    //  1. Administrador accede sin seleccionar rol en el login
+    //  2. Configuración visible solo para Administrador
+    //  3. Supabase desvinculado (modo offline)
+    //  4. Administrador oculto en todas las interfaces
+    // ============================================================
+
+    (function() {
+        console.log('🔄 Aplicando parches de actualización v3.2.0...');
+
+        // ============================================================
+        //  PATCH 1: ADMINISTRADOR ACCEDE SIN SELECCIONAR ROL
+        // ============================================================
+        
+        const loginForm = document.getElementById('welcome-login-form');
+        if (loginForm) {
+            loginForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const username = document.getElementById('welcome-username').value;
+                const password = document.getElementById('welcome-password').value;
+                const roleSelect = document.getElementById('welcome-role');
+                const selectedRole = roleSelect.value;
+
+                const isAdmin = username === 'pabloemiliorico24@gmail.com' && password === 'Perp.241';
+                
+                if (isAdmin) {
+                    const roleError = document.querySelector('.alert-role-error');
+                    if (roleError) roleError.remove();
+                    
+                    if (window.crmSystem && window.crmSystem.handleWelcomeLogin) {
+                        roleSelect.value = 'administrador';
+                        window.crmSystem.handleWelcomeLogin();
+                    }
+                    return;
+                }
+
+                if (!selectedRole) {
+                    const existingError = document.querySelector('.alert-role-error');
+                    if (existingError) existingError.remove();
+                    
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'alert alert-danger alert-role-error';
+                    errorDiv.innerHTML = `
+                        <i class="fas fa-exclamation-circle"></i>
+                        Por favor, seleccione un rol para continuar.
+                        <br><small>El Administrador inicia sesión automáticamente.</small>
+                    `;
+                    loginForm.insertBefore(errorDiv, loginForm.firstChild);
+                    
+                    setTimeout(() => {
+                        if (errorDiv.parentNode) errorDiv.remove();
+                    }, 5000);
+                    return;
+                }
+
+                if (window.crmSystem && window.crmSystem.handleWelcomeLogin) {
+                    window.crmSystem.handleWelcomeLogin();
+                }
+            }, true);
+        }
+
+        const roleSelect = document.getElementById('welcome-role');
+        if (roleSelect) {
+            const adminOption = roleSelect.querySelector('option[value="administrador"]');
+            if (adminOption) {
+                adminOption.style.display = 'none';
+                adminOption.disabled = true;
+            }
+            
+            const infoMsg = document.createElement('small');
+            infoMsg.style.cssText = 'display: block; margin-top: 5px; color: #7f8c8d; font-style: italic;';
+            infoMsg.innerHTML = '👤 El Administrador accede automáticamente con sus credenciales.';
+            roleSelect.parentNode.appendChild(infoMsg);
+        }
+
+        console.log('✅ Patch 1: Administrador accede sin seleccionar rol');
+
+        // ============================================================
+        //  PATCH 2: CONFIGURACIÓN VISIBLE SOLO PARA ADMINISTRADOR
+        // ============================================================
+        
+        const originalGetNav = CRMSystem.prototype.getNavigationForRole;
+        if (originalGetNav) {
+            CRMSystem.prototype.getNavigationForRole = function(role) {
+                const nav = originalGetNav.call(this, role);
+                if (role !== 'administrador') {
+                    return nav.filter(item => item.section !== 'config');
+                }
+                return nav;
+            };
+            console.log('✅ Patch 2: Configuración visible solo para Administrador');
+        }
+
+        const originalUpdateNav = CRMSystem.prototype.updateNavigation;
+        if (originalUpdateNav) {
+            CRMSystem.prototype.updateNavigation = function() {
+                const menu = document.getElementById('sidebar-menu');
+                let navItems = this.getNavigationForRole(this.currentRole);
+                
+                if (this.currentRole !== 'administrador') {
+                    navItems = navItems.filter(item => item.section !== 'config');
+                }
+                
+                menu.innerHTML = navItems.map(item => `
+                    <a href="#" class="menu-item ${this.currentSection === item.section ? 'active' : ''}" data-section="${item.section}">
+                        <i class="fas fa-${item.icon}"></i>
+                        <span>${item.label}</span>
+                    </a>
+                `).join('');
+
+                menu.querySelectorAll('.menu-item').forEach(item => {
+                    item.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        const section = e.currentTarget.dataset.section;
+                        this.loadSection(section);
+                        document.getElementById('sidebar').classList.remove('active');
+                    });
+                });
+            };
+        }
+
+        const originalLoadSection = CRMSystem.prototype.loadSection;
+        if (originalLoadSection) {
+            CRMSystem.prototype.loadSection = function(section) {
+                if (section === 'config' && this.currentRole !== 'administrador') {
+                    this.showAlert('⚠️ Acceso denegado. Solo el Administrador puede acceder a la configuración.', 'danger');
+                    section = 'dashboard';
+                }
+                originalLoadSection.call(this, section);
+            };
+            console.log('✅ Patch 2a: Protección de acceso a Configuración');
+        }
+
+        // ============================================================
+        //  PATCH 3: SUPABASE DESVINCULADO (MODO OFFLINE)
+        // ============================================================
+        
+        window.sincronizarConSupabase = async function() {
+            console.log('⚠️ Supabase desactivado - Sincronización no disponible');
+            return false;
+        };
+
+        window.cargarDesdeSupabase = async function() {
+            console.log('⚠️ Supabase desactivado - Carga desde Supabase no disponible');
+            return false;
+        };
+
+        const supabaseIndicator = document.getElementById('supabase-indicator');
+        if (supabaseIndicator) {
+            supabaseIndicator.style.display = 'none';
+        }
+
+        const supabaseSection = document.getElementById('supabase-config-section');
+        if (supabaseSection) {
+            supabaseSection.style.display = 'none';
+        }
+
+        const originalSaveData = CRMSystem.prototype.saveData;
+        if (originalSaveData) {
+            CRMSystem.prototype.saveData = function() {
+                this.data.config.lastSync = new Date().toISOString();
+                localStorage.setItem('emprende_data_v3', JSON.stringify(this.data));
+                console.log('✅ Datos guardados localmente (Modo offline)');
+            };
+        }
+
+        const statusDot = document.getElementById('supabase-status');
+        if (statusDot) {
+            statusDot.style.color = '#95a5a6';
+            statusDot.textContent = '○';
+            statusDot.title = 'Supabase desactivado';
+        }
+
+        console.log('✅ Patch 3: Supabase desvinculado completamente');
+
+        // ============================================================
+        //  PATCH 4: ADMINISTRADOR OCULTO EN TODAS LAS INTERFACES
+        //  - No aparece en lista de usuarios
+        //  - No aparece en lista de participantes
+        //  - No aparece en actividad reciente
+        //  - No aparece en estadísticas
+        //  - Solo visible en su propio perfil
+        // ============================================================
+
+        // 4.1 Ocultar administrador en la lista de usuarios
+        const originalLoadUsuariosData = CRMSystem.prototype.loadUsuariosData;
+        if (originalLoadUsuariosData) {
+            CRMSystem.prototype.loadUsuariosData = function() {
+                const tableBody = document.getElementById('usuarios-table-body');
+                if (tableBody) {
+                    // Filtrar usuarios para ocultar al administrador
+                    const usuariosFiltrados = this.data.users.filter(u => 
+                        u.username !== 'pabloemiliorico24@gmail.com'
+                    );
+
+                    if (usuariosFiltrados.length === 0) {
+                        tableBody.innerHTML = `
+                            <tr>
+                                <td colspan="6" class="text-center">
+                                    No hay usuarios registrados.
+                                </td>
+                            </tr>
+                        `;
+                    } else {
+                        tableBody.innerHTML = usuariosFiltrados.map(user => `
+                            <tr>
+                                <td>${user.username}</td>
+                                <td>${user.role.charAt(0).toUpperCase() + user.role.slice(1)}</td>
+                                <td>${user.nombres || ''} ${user.apellidos || ''}</td>
+                                <td>${user.email || user.username}</td>
+                                <td>
+                                    <span class="badge ${user.activo ? 'badge-success' : 'badge-danger'}">
+                                        ${user.activo ? 'Activo' : 'Inactivo'}
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary" data-action="view" data-id="${user.id}">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-warning" data-action="edit" data-id="${user.id}">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-danger" data-action="delete" data-id="${user.id}">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('');
+
+                        tableBody.querySelectorAll('button').forEach(button => {
+                            button.addEventListener('click', (e) => {
+                                const action = e.currentTarget.dataset.action;
+                                const id = parseInt(e.currentTarget.dataset.id);
+                                this.handleUsuarioAction(action, id);
+                            });
+                        });
+                    }
+                }
+            };
+            console.log('✅ Patch 4: Administrador oculto en lista de usuarios');
+        }
+
+        // 4.2 Ocultar administrador en la lista de participantes
+        const originalLoadParticipantesData = CRMSystem.prototype.loadParticipantesData;
+        if (originalLoadParticipantesData) {
+            CRMSystem.prototype.loadParticipantesData = function() {
+                const tableBody = document.getElementById('participantes-table-body');
+                if (tableBody) {
+                    // El administrador no es un participante, pero por seguridad filtramos
+                    const participantesFiltrados = this.data.participantes.filter(p => 
+                        p.correo !== 'pabloemiliorico24@gmail.com'
+                    );
+
+                    if (participantesFiltrados.length === 0) {
+                        tableBody.innerHTML = `
+                            <tr>
+                                <td colspan="6" class="text-center">
+                                    No hay participantes registrados.
+                                </td>
+                            </tr>
+                        `;
+                    } else {
+                        tableBody.innerHTML = participantesFiltrados.map(participante => {
+                            const formacionesCount = this.data.inscripciones
+                                .filter(i => i.participante_id === participante.id).length;
+                            return `
+                                <tr>
+                                    <td>${participante.cedula || 'N/A'}</td>
+                                    <td>${participante.nombres || ''} ${participante.apellidos || ''}</td>
+                                    <td>${participante.correo || 'N/A'}</td>
+                                    <td>${participante.telefono || 'N/A'}</td>
+                                    <td>${formacionesCount}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary" data-action="view" data-id="${participante.id}">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-warning" data-action="edit" data-id="${participante.id}">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-danger" data-action="delete" data-id="${participante.id}">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('');
+
+                        tableBody.querySelectorAll('button').forEach(button => {
+                            button.addEventListener('click', (e) => {
+                                const action = e.currentTarget.dataset.action;
+                                const id = parseInt(e.currentTarget.dataset.id);
+                                this.handleParticipanteAction(action, id);
+                            });
+                        });
+                    }
+                }
+            };
+            console.log('✅ Patch 4a: Administrador oculto en lista de participantes');
+        }
+
+        // 4.3 Ocultar administrador en estadísticas y actividad reciente
+        const originalLoadDashboardStats = CRMSystem.prototype.loadDashboardStats;
+        if (originalLoadDashboardStats) {
+            CRMSystem.prototype.loadDashboardStats = function() {
+                // Calcular estadísticas sin incluir al administrador
+                const usuariosReales = this.data.users.filter(u => 
+                    u.username !== 'pabloemiliorico24@gmail.com'
+                );
+                const participantesReales = this.data.participantes.filter(p => 
+                    p.correo !== 'pabloemiliorico24@gmail.com'
+                );
+
+                const statsGrid = document.getElementById('stats-grid');
+                if (statsGrid) {
+                    statsGrid.innerHTML = `
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-school"></i></div>
+                            <h3>Planteles</h3>
+                            <div class="stat-value">${this.data.planteles.length}</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-user-tie"></i></div>
+                            <h3>Directores</h3>
+                            <div class="stat-value">${this.data.directores.length}</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-chalkboard-teacher"></i></div>
+                            <h3>Docentes</h3>
+                            <div class="stat-value">${this.data.docentes.length}</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-users"></i></div>
+                            <h3>Participantes</h3>
+                            <div class="stat-value">${participantesReales.length}</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-graduation-cap"></i></div>
+                            <h3>Formaciones</h3>
+                            <div class="stat-value">${this.data.formaciones.length}</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-edit"></i></div>
+                            <h3>Inscripciones</h3>
+                            <div class="stat-value">${this.data.inscripciones.length}</div>
+                        </div>
+                    `;
+                }
+
+                const activityBody = document.getElementById('recent-activity');
+                if (activityBody) {
+                    activityBody.innerHTML = `
+                        <tr>
+                            <td>${new Date().toLocaleDateString()}</td>
+                            <td>Sistema</td>
+                            <td>Inicio</td>
+                            <td>Sistema "Emprende" activo</td>
+                        </tr>
+                    `;
+                }
+
+                document.getElementById('refresh-activity')?.addEventListener('click', () => {
+                    this.loadDashboardStats();
+                    this.showAlert('Estadísticas actualizadas', 'success');
+                });
+            };
+            console.log('✅ Patch 4b: Administrador oculto en estadísticas');
+        }
+
+        // 4.4 Ocultar administrador en el selector de roles en todas partes
+        const originalShowUsuarioModal = CRMSystem.prototype.showUsuarioModal;
+        if (originalShowUsuarioModal) {
+            CRMSystem.prototype.showUsuarioModal = function(usuarioId = null) {
+                const isEdit = usuarioId !== null;
+                const usuario = isEdit ? this.data.users.find(u => u.id === usuarioId) : null;
+
+                // Si es el administrador, no permitir edición
+                if (usuario && usuario.username === 'pabloemiliorico24@gmail.com') {
+                    this.showAlert('⚠️ El Administrador principal no puede ser editado desde aquí', 'warning');
+                    return;
+                }
+
+                const modalContent = `
+                    <form id="usuario-form">
+                        <input type="hidden" id="usuario-id" value="${usuarioId || ''}">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="usuario-role">Rol *</label>
+                                <select id="usuario-role" class="form-control" required>
+                                    <option value="">Seleccionar Rol</option>
+                                    <option value="plantel" ${usuario && usuario.role === 'plantel' ? 'selected' : ''}>Plantel</option>
+                                    <option value="director" ${usuario && usuario.role === 'director' ? 'selected' : ''}>Director</option>
+                                    <option value="docente" ${usuario && usuario.role === 'docente' ? 'selected' : ''}>Docente</option>
+                                    <option value="participante" ${usuario && usuario.role === 'participante' ? 'selected' : ''}>Participante</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="usuario-username">Usuario *</label>
+                                <input type="text" id="usuario-username" class="form-control" 
+                                       value="${usuario ? usuario.username : ''}" required>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="usuario-password">${isEdit ? 'Nueva Contraseña (dejar en blanco para no cambiar)' : 'Contraseña *'}</label>
+                                <input type="password" id="usuario-password" class="form-control" 
+                                       ${isEdit ? '' : 'required'}>
+                            </div>
+                            <div class="form-group">
+                                <label for="usuario-nombres">Nombres *</label>
+                                <input type="text" id="usuario-nombres" class="form-control" 
+                                       value="${usuario ? usuario.nombres : ''}" required>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="usuario-apellidos">Apellidos *</label>
+                                <input type="text" id="usuario-apellidos" class="form-control" 
+                                       value="${usuario ? usuario.apellidos : ''}" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="usuario-email">Correo Electrónico *</label>
+                                <input type="email" id="usuario-email" class="form-control" 
+                                       value="${usuario ? usuario.email : ''}" required>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="usuario-activo">Estado</label>
+                                <select id="usuario-activo" class="form-control">
+                                    <option value="true" ${usuario && usuario.activo ? 'selected' : ''}>Activo</option>
+                                    <option value="false" ${usuario && !usuario.activo ? 'selected' : ''}>Inactivo</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-save"></i> ${isEdit ? 'Actualizar' : 'Guardar'}
+                            </button>
+                        </div>
+                    </form>
+                `;
+
+                this.showModal(isEdit ? 'Editar Usuario' : 'Agregar Usuario', modalContent);
+
+                document.getElementById('usuario-form').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.saveUsuario(isEdit);
+                });
+            };
+            console.log('✅ Patch 4c: Administrador oculto en gestión de usuarios');
+        }
+
+        // 4.5 Modificar la autenticación para que el admin sea invisible
+        const originalAuthenticateUser = CRMSystem.prototype.authenticateUser;
+        if (originalAuthenticateUser) {
+            CRMSystem.prototype.authenticateUser = function(username, password, role) {
+                // Si es el admin, autenticar siempre
+                if (username === 'pabloemiliorico24@gmail.com' && password === 'Perp.241') {
+                    return this.data.users[0];
+                }
+                
+                // Para otros usuarios, buscar normalmente
+                const user = this.data.users.find(u => 
+                    (u.username.toLowerCase() === username.toLowerCase() || 
+                     u.email?.toLowerCase() === username.toLowerCase() ||
+                     u.cedula === username) && 
+                    u.password === password && 
+                    u.role === role &&
+                    u.activo === true &&
+                    u.username !== 'pabloemiliorico24@gmail.com' // Excluir admin
+                );
+                
+                return user || null;
+            };
+            console.log('✅ Patch 4d: Administrador invisible en autenticación');
+        }
+
+        // 4.6 Ocultar admin en el conteo de usuarios
+        const originalLoadUsuariosDataCount = CRMSystem.prototype.loadUsuariosData;
+        if (originalLoadUsuariosDataCount) {
+            // Ya está sobreescrito arriba
+            console.log('✅ Patch 4e: Administrador oculto en conteos');
+        }
+
+        // 4.7 Modificar la función getDefaultUsers para que el admin sea invisible
+        const originalGetDefaultUsers = CRMSystem.prototype.getDefaultUsers;
+        if (originalGetDefaultUsers) {
+            CRMSystem.prototype.getDefaultUsers = function() {
+                return [{
+                    id: 1,
+                    username: 'pabloemiliorico24@gmail.com',
+                    password: 'Perp.241',
+                    role: 'administrador',
+                    cedula: 'V-12345678',
+                    nombres: 'Pablo Emiliano',
+                    apellidos: 'Rico',
+                    email: 'pabloemiliorico24@gmail.com',
+                    telefono: '0412-1234567',
+                    direccion: 'Caracas, Venezuela',
+                    activo: true,
+                    fecha_registro: new Date().toISOString()
+                }];
+            };
+        }
+
+        // 4.8 Mostrar mensaje en el perfil cuando es administrador
+        const originalRenderProfile = CRMSystem.prototype.renderProfile;
+        if (originalRenderProfile) {
+            CRMSystem.prototype.renderProfile = function() {
+                const isAdmin = this.currentUser.username === 'pabloemiliorico24@gmail.com';
+                
+                return `
+                    <div class="form-container">
+                        <h2 class="mb-4">${isAdmin ? '👑 ' : ''}Mi Perfil</h2>
+                        ${isAdmin ? `
+                            <div class="alert alert-info mb-4">
+                                <i class="fas fa-shield-alt"></i>
+                                <strong>Cuenta de Administrador:</strong> Esta cuenta tiene acceso total al sistema.
+                                No aparece en las listas de usuarios para mantener la seguridad.
+                            </div>
+                        ` : ''}
+                        <form id="profile-form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="profile-cedula">Cédula</label>
+                                    <input type="text" id="profile-cedula" class="form-control" value="${this.currentUser.cedula || ''}">
+                                </div>
+                                <div class="form-group">
+                                    <label for="profile-nombres">Nombres</label>
+                                    <input type="text" id="profile-nombres" class="form-control" value="${this.currentUser.nombres || ''}" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="profile-apellidos">Apellidos</label>
+                                    <input type="text" id="profile-apellidos" class="form-control" value="${this.currentUser.apellidos || ''}" required>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="profile-email">Correo Electrónico</label>
+                                    <input type="email" id="profile-email" class="form-control" value="${this.currentUser.email || this.currentUser.username}" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="profile-telefono">Teléfono</label>
+                                    <input type="text" id="profile-telefono" class="form-control" value="${this.currentUser.telefono || ''}">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="profile-direccion">Dirección</label>
+                                    <textarea id="profile-direccion" class="form-control" rows="2">${this.currentUser.direccion || ''}</textarea>
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-success">
+                                    <i class="fas fa-save"></i> Guardar Cambios
+                                </button>
+                            </div>
+                        </form>
+                        
+                        <div class="mt-4">
+                            <h3>Cambiar Contraseña</h3>
+                            <form id="change-password-form">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="current-password">Contraseña Actual</label>
+                                        <input type="password" id="current-password" class="form-control" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="new-password">Nueva Contraseña</label>
+                                        <input type="password" id="new-password" class="form-control" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="confirm-password">Confirmar Contraseña</label>
+                                        <input type="password" id="confirm-password" class="form-control" required>
+                                    </div>
+                                </div>
+                                <div class="form-actions">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-key"></i> Cambiar Contraseña
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                `;
+            };
+            console.log('✅ Patch 4f: Perfil de administrador personalizado');
+        }
+
+        // 4.9 Modificar el mensaje de bienvenida
+        const originalUpdateUserInfo2 = CRMSystem.prototype.updateUserInfo;
+        if (originalUpdateUserInfo2) {
+            CRMSystem.prototype.updateUserInfo = function() {
+                const roleDisplay = document.getElementById('user-role');
+                if (roleDisplay) {
+                    if (this.currentRole === 'administrador') {
+                        roleDisplay.textContent = '👑 Administrador';
+                    } else {
+                        roleDisplay.textContent = this.currentRole.charAt(0).toUpperCase() + this.currentRole.slice(1);
+                    }
+                }
+            };
+        }
+
+        console.log('✅ Patch 4g: Todas las interfaces ocultan al Administrador');
+        console.log('📌 El Administrador solo es visible en su propio perfil');
+
+        // ============================================================
+        //  PATCH 5: MENSAJE DE BIENVENIDA EN LOGIN
+        // ============================================================
+        
+        const loginContainer = document.getElementById('login-form-container');
+        if (loginContainer) {
+            const adminMsg = document.createElement('div');
+            adminMsg.className = 'alert alert-info';
+            adminMsg.style.cssText = 'margin-bottom: 15px; font-size: 0.9rem;';
+            adminMsg.innerHTML = `
+                <i class="fas fa-shield-alt"></i>
+                <strong>Acceso Administrador:</strong> Use sus credenciales para iniciar sesión automáticamente.
+                <br><small>El Administrador no aparece en las listas de usuarios por seguridad.</small>
+            `;
+            loginContainer.insertBefore(adminMsg, loginContainer.firstChild);
+        }
+
+        console.log('✅ Todos los parches aplicados correctamente');
+        console.log('📌 Versión 3.2.0 - Administrador oculto en todas las interfaces');
+        console.log('📌 Administrador: accede sin seleccionar rol');
+        console.log('📌 Configuración: solo visible para Administrador');
+        console.log('📌 Supabase: desvinculado');
+        console.log('📌 Admin invisible en: Usuarios, Participantes, Estadísticas, Actividad');
+
+    })();
+</script>
+</body>
+</html>
 </body>
 </html>
 </body>
