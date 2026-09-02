@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Emprende - Sistema de Gestión Educativa</title>
@@ -924,7 +925,21 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #2980b9;
         }
-    </style>
+    
+    /* Google Auth: rol determinado automáticamente por el usuario */
+    #welcome-role, label[for="welcome-role"] { display:none !important; }
+    #emprende-google-login { margin-top:14px; }
+    .emprende-google-btn { width:100%; padding:12px 16px; border:1px solid #dadce0; border-radius:8px; background:#fff; color:#3c4043; font-weight:600; cursor:pointer; }
+    .emprende-google-btn:hover { box-shadow:0 2px 7px rgba(0,0,0,.16); }
+    .emprende-gmail-btn { margin-left:8px; }
+
+</style>
+<script>
+const GOOGLE_CONFIG = {
+  clientId: '1025197818371-vu58khjdhv183r4dv57l3icir2nfr8t3.apps.googleusercontent.com',
+  gmailScopes: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send'
+};
+</script>
 </head>
 <body>
     <!-- ===== PÁGINA DE BIENVENIDA ===== -->
@@ -6246,8 +6261,8 @@
         console.log('📌 Admin invisible en: Usuarios, Participantes, Estadísticas, Actividad');
 
     })();
-    <script src="js/google-auth-patch.js"></script>
 </script>
+<script src="js/google-auth-patch.js"></script>
 </body>
 </html>
 </body>
